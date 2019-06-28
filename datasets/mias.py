@@ -28,7 +28,7 @@ class MIAS(data.Dataset):
     self.parse_data()
 
   def __len__(self):
-    return len(self.dataset)
+    return len(self.samples)
 
   def __getitem__(self, index):
     """
@@ -117,7 +117,6 @@ class MIAS(data.Dataset):
 
   def _parse_infos(self, folder):
     regex = r"(mdb\d{3})\W([FGD])\W(CALC|CIRC|SPIC|MISC|ARCH|ASYM|NORM)\W?([BM])?\W?((\d{1,3})\W(\d{1,3})\W(\d{1,3})|(\*NOTE\W3\*))?"
-
     file_names = []
     labels = [] 
     for line in open(os.path.join(folder, 'Info.txt')):
