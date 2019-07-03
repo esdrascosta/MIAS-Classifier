@@ -12,18 +12,19 @@ import time
 import os
 import copy
 import argparse
+from model import ResNet18
+from datasets import MIAS
+from PIL import Image
 
 parser = argparse.ArgumentParser(description='ResNet-MIAS')
 parser.add_argument('--load-weights', type=str, default=None, metavar='LW',
                     help='load weights from given file')
-parser.add_argument('--batch-size', type=int, default=128, metavar='N',
-                    help='input batch size for training (default: 128)')
-parser.add_argument('--epochs', type=int, default=30, metavar='N',
+parser.add_argument('--batch-size', type=int, default=10, metavar='N',
+                    help='input batch size for training (default: 20)')
+parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
-                    help='learning rate (default: 0.01)')
-parser.add_argument('--weight-decay', type=float, default=0, metavar='WD',
-                    help='weight decay (default: 0)')
+                    help='learning rate (default: 0.001)')
 parser.add_argument('--cuda', action='store_true', default=True,
                     help='CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -34,7 +35,38 @@ parser.add_argument('--data-folder', type=str, default='./data', metavar='DF',
                     help='where to store the datasets')
 args = parser.parse_args()
 
+# REPRODUCIBILITY
+torch.manual_seed(args.seed)
+np.random.seed(args.seed)
+
 device = torch.device("cuda:0" if torch.cuda.is_available() and args.cuda else "cpu")
+
+# load dataset
+data_path = os.path.join(args.data_folder)
+full_dataset = MIAS(data_path, download=False, 
+            transform=transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Resize((128, 128), interpolation=Image.LANCZOS), 
+                transforms.ToTensor()
+            ]))    
+num_classes = len(full_dataset.labels_info)
+train_size = int(len(full_dataset) * .7) 
+val_size = len(full_dataset) - train_size
+
+print(f"Train Size: {str(train_size)}")
+print(f"Val Size: {str(val_size)}")
+
+train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+
+train_loader = torch.utils.data.DataLoader(train_dataset, 
+                batch_size=args.batch_size, shuffle=True)
+val_loader = torch.utils.data.DataLoader(val_dataset, 
+                batch_size=args.batch_size, shuffle=True)
+
+dataloaders = {
+  'train': train_loader,
+  'val': val_loader
+}
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs):
     since = time.time()
@@ -102,3 +134,19 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model
+
+def main(): 
+  model_ft = ResNet18(num_classes=num_classes)
+  model_ft = model_ft.to(device)
+
+  criterion = nn.CrossEntropyLoss()
+  optimizer_ft = optim.SGD(model_ft.parameters(), lr=args.lr, momentum=0.9)
+
+  # Decay LR by a factor of 0.1 every 7 epochs
+  exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+
+  train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=args.epochs)
+
+if __name__ == "__main__":
+    main()
+    

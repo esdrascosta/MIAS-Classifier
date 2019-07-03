@@ -7,7 +7,6 @@ import gzip
 import re
 import os
 
-
 class MIAS(data.Dataset):
 
   raw_folder = 'raw'
