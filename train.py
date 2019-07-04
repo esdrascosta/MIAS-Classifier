@@ -47,6 +47,7 @@ full_dataset = MIAS(data_path, download=False,
             transform=transforms.Compose([
                 transforms.ToPILImage(),
                 transforms.Resize((128, 128), interpolation=Image.LANCZOS), 
+                transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ToTensor()
             ]))    
 num_classes = len(full_dataset.labels_info)
@@ -68,6 +69,11 @@ dataloaders = {
   'val': val_loader
 }
 
+dataset_sizes = {
+  'train': train_size,
+  'val': val_size
+}
+
 def train_model(model, criterion, optimizer, scheduler, num_epochs):
     since = time.time()
 
@@ -75,9 +81,10 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     best_acc = 0.0
     
     for epoch in range(num_epochs):
-      epoch_since = time.time()
       # Each epoch has a training and validation phase
+      epoch_since = time.time()
       for phase in ['train', 'val']:
+           
         if phase == 'train':
           scheduler.step()
           model.train()  # Set model to training mode
@@ -116,8 +123,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
 
         epoch_time_elapsed = time.time() - epoch_since
         eta = ((num_epochs - epoch) + 1 ) * epoch_time_elapsed
-        print('Epoch: {}/{} Phase: {} Loss: {:.4f} Acc: {:.4f} Epoch Time: {:.0f}s ETA: {:.0f}m {:.0f}s'.format(
-          epoch, num_epochs - 1, phase, epoch_loss, epoch_acc, epoch_time_elapsed, eta // 60, eta % 60))
+        print('Epoch: {}/{} Phase: {:<5} Loss: {:.4f} Acc: {:.4f} Epoch Time: {:.0f}s ETA: {:.0f}m {:.0f}s'.format(
+          epoch + 1, num_epochs, phase, epoch_loss, epoch_acc, epoch_time_elapsed, eta // 60, eta % 60))
 
         # deep copy the model
         if phase == 'val' and epoch_acc > best_acc:
@@ -137,6 +144,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
 
 def main(): 
   model_ft = ResNet18(num_classes=num_classes)
+  print(model_ft)
   model_ft = model_ft.to(device)
 
   criterion = nn.CrossEntropyLoss()
