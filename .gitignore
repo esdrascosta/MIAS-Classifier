@@ -1,3 +1,9 @@
+# macOS
+
+.DS_Store
+
+# Project
+
 data
 *__pycache__
 *.pyc
