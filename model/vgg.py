@@ -9,7 +9,9 @@ cfg = {
     'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
 }
 
+
 class VGG(nn.Module):
+
     def __init__(self, vgg_name, in_channels=1, out_channels):
         super(VGG, self).__init__()
         self.in_channels = in_channels
@@ -36,13 +38,15 @@ class VGG(nn.Module):
         layers += [nn.AvgPool2d(kernel_size=4, stride=1)]
         return nn.Sequential(*layers)
 
+
 def test():
     net = VGG('VGG11', 1, 7)
     print(net)
-    x = torch.randn(2,1, 128, 128)
+    x = torch.randn(2, 1, 128, 128)
     y = net(x)
     print(y)
     print(y.size())
+
 
 if __name__ == "__main__":
     test()
