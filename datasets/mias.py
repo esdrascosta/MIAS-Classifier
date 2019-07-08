@@ -37,7 +37,7 @@ class MIAS(data.Dataset):
 
 	'''
 
-	def __init__(self, transform=None, target_transform=None, load=1):
+	def __init__(self, transform=None, target_transform=None, load=2):
 
 		self.transform = transform
 		self.target_transform = target_transform
@@ -71,6 +71,9 @@ class MIAS(data.Dataset):
 		else:
 
 			# Use images containing the ROIs and data augmentation.
+
+			p, s, l = self.__simple_data_augmentation__(p, l)
+			p, s, l = self.__extend_data_augmentation__(p, l)
 
 			self.patients = p
 			self.samples = s
@@ -389,6 +392,115 @@ class MIAS(data.Dataset):
 		json.dump((patients + n_patients), infos_file, indent=4)
 
 		return (patients + n_patients), n_samples, labels_enumeration
+
+	'''
+
+	xxx
+
+	'''
+
+	def __extend_data_augmentation__(self, patients, labels_enumeration):
+
+		p_index = 0
+		n_samples = []
+		n_patients = []
+
+		folder_name_dataset = 'all-augmented-cropped'
+		folder_path_dataset = os.path.join(self.root_folder_name, folder_name_dataset)
+
+		infos_filename = 'infos.json'
+		infos_filepath = os.path.join(folder_path_dataset, infos_filename)
+
+		if os.path.isdir(folder_path_dataset) == True:
+
+			infos_file = open(infos_filepath, "r")
+			patients = json.load(infos_file)
+
+			for patient in patients:
+
+				abn_class = patient['abn_class']
+				abn_class_enumeration = labels_enumeration[abn_class]
+				img_filename = patient['img_filename']
+				img_path = os.path.join(folder_path_dataset, img_filename)
+
+				n_samples.append((img_path, abn_class_enumeration))
+
+			return patients, n_samples, labels_enumeration
+
+		try:
+			os.makedirs(folder_path_dataset)
+		except OSError as e:
+			if e.errno != errno.EEXIST:
+				raise
+
+		infos_file = open(infos_filepath, "w+")
+
+		for patient in patients:
+
+			for side in ['left', 'right']:
+
+				abn_class = patient[side]['abn_class']
+				abn_class_enum = labels_enumeration[abn_class]
+
+				abn_has_coordinates = patient[side]['abn_has_coordinates']
+				abn_coordinates = patient[side]['abn_coordinates']
+				coordinate_x = abn_coordinates[0]
+				coordinate_y = abn_coordinates[1]
+				abn_radius = patient[side]['abn_radius']
+
+				o_img_filename = patient[side]['img_filename']
+				o_img_path = os.path.join(self.root_folder_name, 'all-augmented', o_img_filename)+'.pgm'
+
+				o_img_filename = patient[side]['img_filename']
+				o_img_path = os.path.join(self.root_folder_name, 'all-augmented', o_img_filename)+'.pgm'
+				n_img_path = os.path.join(folder_path_dataset, o_img_filename)+'.pgm'
+
+				if abn_class == 'NORM':
+
+					num_windows = 1
+					window_size = 128
+
+					for i in range(num_windows):
+
+						n_img_filename = (o_img_filename + '-' + str(i))
+						n_img_path = os.path.join(folder_path_dataset, n_img_filename)+'.pgm'
+
+						x0 = max(0, 256 + random.randint(1, 384))
+						y0 = max(0, 256 + random.randint(1, 384))
+						xN = min((x0+window_size), 1024)
+						yN = min((y0+window_size), 1024)
+						window_coordinates = (x0, y0, xN, yN)
+
+						Image.open(o_img_path).crop(window_coordinates).resize((128, 128)).save(n_img_path)
+
+						n_patients.append({})
+						n_patients[p_index] = {}
+						n_patients[p_index]['img_filename'] = n_img_filename
+						n_patients[p_index]['abn_class'] = abn_class
+						n_samples.append((n_img_path, abn_class_enum))
+						p_index = p_index + 1
+
+				elif abn_has_coordinates == True:
+
+					window_size = max(128, (abn_radius*2)) * 1.2
+					x0 = max(0, coordinate_x - (window_size / 2))
+					y0 = max(0, (1024-coordinate_y) - (window_size / 2))
+					xN = min((x0+window_size), 1024)
+					yN = min((y0+window_size), 1024)
+					window_coordinates = (x0, y0, xN, yN)
+
+					Image.open(o_img_path).crop(window_coordinates).resize((128, 128)).save(n_img_path)
+
+					n_patients.append({})
+					n_patients[p_index] = {}
+					n_patients[p_index]['img_filename'] = o_img_filename
+					n_patients[p_index]['abn_class'] = abn_class
+					n_samples.append((n_img_path, abn_class_enum))
+					p_index = p_index + 1
+
+		json.dump(n_patients, infos_file, indent=4)
+
+		return n_patients, n_samples, labels_enumeration
 
 	'''
 
