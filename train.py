@@ -13,6 +13,7 @@ import os
 import copy
 import argparse
 from model import ResNet18
+from model import VGG
 from datasets import MIAS
 from PIL import Image
 
@@ -47,7 +48,6 @@ full_dataset = MIAS(data_path, download=False,
             transform=transforms.Compose([
                 transforms.ToPILImage(),
                 transforms.Resize((128, 128), interpolation=Image.LANCZOS), 
-                transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ToTensor()
             ]))    
 num_classes = len(full_dataset.labels_info)
@@ -143,7 +143,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     return model
 
 def main(): 
-  model_ft = ResNet18(num_classes=num_classes)
+  model_ft = VGG('VGG11', num_classes)
   print(model_ft)
   model_ft = model_ft.to(device)
 
