@@ -263,10 +263,10 @@ def main():
         momentum=0.9,
         weight_decay=args.weight_decay)
 
-    # # Decay LR by a factor of 0.1 every 7 epochs
+    # # Decay LR by a factor of 0.1 every 40 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(
         optimizer_ft,
-        step_size=10,
+        step_size=40,
         gamma=0.1
     )
 
