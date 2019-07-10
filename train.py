@@ -12,18 +12,11 @@ import time
 import os
 import copy
 import argparse
-from model import ResNet18, VGG
+from model import ResNet18, ResNet34, ResNet50, ResNet101, ResNet152, VGG
 from datasets import MIAS
 from PIL import Image
 
 parser = argparse.ArgumentParser(description='ResNet-MIAS')
-parser.add_argument(
-    '--load-weights',
-    type=str,
-    default=None,
-    metavar='LW',
-    help='load weights from given file'
-)
 parser.add_argument(
     '--batch-size',
     type=int,
@@ -41,9 +34,9 @@ parser.add_argument(
 parser.add_argument(
     '--lr',
     type=float,
-    default=0.001,
+    default=0.1,
     metavar='LR',
-    help='learning rate (default: 0.001)'
+    help='learning rate (default: 0.1)'
 )
 parser.add_argument(
     '--cuda',
@@ -59,18 +52,26 @@ parser.add_argument(
     help='random seed (default: 1)'
 )
 parser.add_argument(
-    '--snapshot-folder',
-    type=str,
-    default='./snapshots',
-    metavar='SF',
-    help='where to store the snapshots'
-)
-parser.add_argument(
     '--data-folder',
     type=str,
     default='./data',
     metavar='DF',
     help='where to store the datasets'
+)
+parser.add_argument(
+    '--weight-decay',
+    type=float,
+    default=1e-4,
+    metavar='WD',
+    help='weight decay (default: 0)'
+)
+
+parser.add_argument(
+    '--model',
+    type=str,
+    default='ResNet18',
+    metavar='MD',
+    help='which model to use'
 )
 args = parser.parse_args()
 
@@ -92,10 +93,12 @@ Load the dataset.
 data_path = os.path.join(args.data_folder)
 mias_dataset = MIAS(
     data_path,
+    download=False,
     transform=transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize((128, 128), interpolation=Image.LANCZOS),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
     ])
 )
 
@@ -224,8 +227,31 @@ Main Function
 """
 
 
+def get_model():
+    if args.model == 'ResNet18':
+        return ResNet18()
+    elif args.model == 'ResNet34':
+        return ResNet34()
+    elif args.model == 'ResNet50':
+        return ResNet50()
+    elif args.model == 'ResNet101':
+        return ResNet101()
+    elif args.model == 'ResNet152':
+        return ResNet152()
+    elif args.model == 'VGG11':
+        return VGG('VGG11')
+    elif args.model == 'VGG13':
+        return VGG('VGG13')
+    elif args.model == 'VGG16':
+        return VGG('VGG16')
+    elif args.model == 'VGG19':
+        return VGG('VGG19')
+    else:
+        raise 'Model Not found'
+
+
 def main():
-    model_ft = VGG('VGG11', num_classes)
+    model_ft = get_model()
     print(model_ft)
     model_ft = model_ft.to(device)
 
@@ -234,13 +260,13 @@ def main():
     optimizer_ft = optim.SGD(
         model_ft.parameters(),
         lr=args.lr,
-        momentum=0.9
-    )
+        momentum=0.9,
+        weight_decay=args.weight_decay)
 
-    # Decay LR by a factor of 0.1 every 7 epochs
+    # # Decay LR by a factor of 0.1 every 7 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(
         optimizer_ft,
-        step_size=7,
+        step_size=10,
         gamma=0.1
     )
 
