@@ -5,9 +5,10 @@
 from __future__ import print_function, division
 
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
+import errno
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,11 +20,15 @@ import time
 import os
 import copy
 import argparse
-from model import ResNet18
+from model import ResNet18, ResNet34, ResNet50, VGG
 from datasets import MIAS
 from PIL import Image
 
+import seaborn as sns
+import pandas as pd
+import sklearn.metrics as sm
 from sampler import ImbalancedDatasetSampler
+from sklearn.utils.multiclass import unique_labels
 
 '''
 
@@ -39,6 +44,14 @@ parser.add_argument(
 	default=None,
 	metavar='LW',
 	help='load weights from given file'
+	)
+
+parser.add_argument(
+	'--network',
+	type=str,
+	default='ResNet18',
+	metavar='N',
+	help='network (default: ResNet18)'
 	)
 
 parser.add_argument(
@@ -63,6 +76,14 @@ parser.add_argument(
 	default=0.001,
 	metavar='LR',
 	help='learning rate (default: 0.001)'
+	)
+
+parser.add_argument(
+	'--load',
+	type=int,
+	default=2,
+	metavar='LOAD',
+	help='MIAS load (default: 2)'
 	)
 
 parser.add_argument(
@@ -121,9 +142,18 @@ Load the dataset.
 
 '''
 
+print('')
+
 dataset_folder_path = os.path.join(args.data_folder)
 
+try:
+	os.makedirs(dataset_folder_path)
+except OSError as e:
+	if e.errno != errno.EEXIST:
+		raise
+
 mias_dataset = MIAS(
+	load = args.load,
 	transform=transforms.Compose([
 		transforms.ToPILImage(),
 		transforms.Resize((128, 128), interpolation=Image.LANCZOS),
@@ -132,6 +162,8 @@ mias_dataset = MIAS(
 		])
 	)
 
+mias_dataset.plot_class_distribution(dataset_folder_path)
+
 '''
 
 Prepare the data.
@@ -139,8 +171,10 @@ Prepare the data.
 '''
 
 num_samples = len(mias_dataset)
+all_classes = mias_dataset.all_classes()
 num_classes = mias_dataset.num_classes()
-training_batch_size = int(num_samples * 0.7)
+
+training_batch_size = int(num_samples * 0.8)
 validation_batch_size = (num_samples - training_batch_size)
 
 print(f"Training batch size: {str(training_batch_size)}")
@@ -164,8 +198,82 @@ validation_loader = torch.utils.data.DataLoader(
 	shuffle=True
 	)
 
+print('')
+print('batch size:')
+print(args.batch_size)
+print('')
+
 data_loaders = { 'train': training_loader, 'val': validation_loader }
 batch_sizes = { 'train': training_batch_size,'val': validation_batch_size }
+
+'''
+
+xxx
+
+'''
+
+def generate_visualizations(
+	t_accuracies,
+	t_losses,
+	v_accuracies,
+	v_losses,
+	confusion_matrice,
+	labels,
+	folder=None
+	):
+
+	cm_sum = np.sum(confusion_matrice, axis=1, keepdims=True)
+	cm_percentuals = confusion_matrice / cm_sum * 100
+	annot = np.empty_like(confusion_matrice).astype(str)
+	nrows, ncols = confusion_matrice.shape
+
+	for i in range(nrows):
+		for j in range(ncols):
+			c = confusion_matrice[i, j]
+			p = cm_percentuals[i, j]
+			if c == 0:
+				annot[i, j] = ''
+			else:
+				annot[i, j] = '%.1f%%' % p
+
+	cm = pd.DataFrame(confusion_matrice, index=labels, columns=labels)
+	cm.index.name = 'Actual'
+	cm.columns.name = 'Predicted'
+
+	plt.figure()
+	plt.margins(0)
+	plt.xlabel('epoch')
+	plt.ylabel('accuracy')
+	plt.plot(t_accuracies, 'b', label='training')
+	plt.plot(v_accuracies, 'g', label='validation')
+	plt.grid(True)
+	plt.legend(loc="lower right")
+	if folder == None:
+		plt.show()
+	else:
+		plt.savefig(folder + '/accuracies-tt.png', bbox_inches = 'tight')
+
+	plt.figure()
+	plt.margins(0)
+	plt.xlabel('epoch')
+	plt.ylabel('loss')
+	plt.plot(t_losses, 'b', label='training')
+	plt.plot(v_losses, 'g', label='validation')
+	plt.grid(True)
+	plt.legend(loc="upper right")
+	if folder == None:
+		plt.show()
+	else:
+		plt.savefig(folder + '/losses-tt.png', bbox_inches = 'tight')
+
+	plt.figure()
+	sns.heatmap(cm, annot=annot, fmt='', cmap="Blues")
+	plt.xlabel('predicted')
+	plt.ylabel('actual')
+	if folder == None:
+		plt.show()
+	else:
+		plt.savefig(folder + '/confusion-matrix.png')
 
 '''
 
@@ -175,72 +283,151 @@ Training function.
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs):
 
+	def train(data):
+
+		running_loss = 0.0
+		running_corrects = 0
+
+		scheduler.step()
+		model.train()
+
+		for inputs, labels in data:
+
+			inputs = inputs.to(device)
+			labels = labels.to(device)
+
+			optimizer.zero_grad()
+
+			with torch.set_grad_enabled(True):
+
+				outputs = model(inputs)
+				_, preds = torch.max(outputs, 1)
+				loss = criterion(outputs, labels)
+
+				loss.backward()
+				optimizer.step()
+
+			running_loss += loss.item() * inputs.size(0)
+			running_corrects += torch.sum(preds == labels.data)
+
+		batch_size = batch_sizes['train']
+		epoch_loss = running_loss / batch_size
+		epoch_acc = running_corrects.double() / batch_size
+
+		return epoch_acc, epoch_loss
+
+	def test(data):
+
+		running_loss = 0.0
+		running_corrects = 0
+
+		running_targets = []
+		running_predictions = []
+
+		model.eval()
+
+		for inputs, labels in data:
+
+			inputs = inputs.to(device)
+			labels = labels.to(device)
+
+			optimizer.zero_grad()
+
+			with torch.set_grad_enabled(False):
+
+				outputs = model(inputs)
+				_, preds = torch.max(outputs, 1)
+				loss = criterion(outputs, labels)
+
+				running_targets += list(labels.cpu().numpy())
+				running_predictions += list(preds.cpu().numpy())
+
+			running_loss += loss.item() * inputs.size(0)
+			running_corrects += torch.sum(preds == labels.data)
+
+		batch_size = batch_sizes['train']
+		epoch_loss = running_loss / batch_size
+		epoch_acc = running_corrects.double() / batch_size
+
+		return epoch_acc, epoch_loss, (running_targets, running_predictions)
+
+	# ...
+
 	since = time.time()
 
-	best_acc = 0.0
+	t_accuracies, t_losses = [], []
+	v_accuracies, v_losses = [], []
+	best_acc = -1
+	best_results = ()
 	best_model_wts = copy.deepcopy(model.state_dict())
 
 	for epoch in range(num_epochs):
 
 		epoch_since = time.time()
 
-		for phase in ['train', 'val']:
+		t_init_time = time.time()
+		t_acc, t_loss = train(data_loaders['train'])
+		t_duration = time.time() - t_init_time
+		t_eta = ((num_epochs - epoch) + 1 ) * t_duration
 
-			running_loss = 0.0
-			running_corrects = 0
+		print('Epoch: {}/{} Phase: {:<5} Loss: {:.4f} Acc: {:.4f} Epoch Time: {:.0f}s ETA: {:.0f}m {:.0f}s'.format(
+			epoch + 1,
+			num_epochs,
+			'training',
+			t_loss,
+			t_acc,
+			t_duration,
+			t_eta // 60,
+			t_eta % 60
+			))
 
-			if phase == 'train':
-				scheduler.step()
-				model.train()
-			else:
-				model.eval()
+		t_accuracies.append(t_acc)
+		t_losses.append(t_loss)
 
-			for inputs, labels in data_loaders[phase]:
+		v_init_time = time.time()
+		v_acc, v_loss, v_results = test(data_loaders['val'])
+		v_duration = time.time() - v_init_time
+		v_eta = ((num_epochs - epoch) + 1 ) * t_duration
 
-				inputs = inputs.to(device)
-				labels = labels.to(device)
+		print('Epoch: {}/{} Phase: {:<5} Loss: {:.4f} Acc: {:.4f} Epoch Time: {:.0f}s ETA: {:.0f}m {:.0f}s'.format(
+			epoch + 1,
+			num_epochs,
+			'validation',
+			v_loss,
+			v_acc,
+			v_duration,
+			v_eta // 60,
+			v_eta % 60
+			))
 
-				# zero the parameter gradients
-				optimizer.zero_grad()
+		if v_acc > best_acc:
 
-				# forward
-				# track history if only in train
-				with torch.set_grad_enabled(phase == 'train'):
+			best_acc = v_acc
+			best_results = v_results
+			best_model_wts = copy.deepcopy(model.state_dict())
 
-					outputs = model(inputs)
-					_, preds = torch.max(outputs, 1)
-					loss = criterion(outputs, labels)
-
-					# backward + optimize only if in training phase
-					if phase == 'train':
-						loss.backward()
-						optimizer.step()
-
-				# statistics
-				running_loss += loss.item() * inputs.size(0)
-				running_corrects += torch.sum(preds == labels.data)
-
-			epoch_loss = running_loss / batch_sizes[phase]
-			epoch_acc = running_corrects.double() / batch_sizes[phase]
-			epoch_time_elapsed = time.time() - epoch_since
-
-			eta = ((num_epochs - epoch) + 1 ) * epoch_time_elapsed
-
-			print('Epoch: {}/{} Phase: {:<5} Loss: {:.4f} Acc: {:.4f} Epoch Time: {:.0f}s ETA: {:.0f}m {:.0f}s'.format(epoch + 1, num_epochs, phase, epoch_loss, epoch_acc, epoch_time_elapsed, eta // 60, eta % 60))
-
-			# deep copy the model
-			if phase == 'val' and epoch_acc > best_acc:
-				best_acc = epoch_acc
-				best_model_wts = copy.deepcopy(model.state_dict())
+		v_accuracies.append(v_acc)
+		v_losses.append(v_loss)
 
 	time_elapsed = time.time() - since
+	labels = [all_classes[i] for i in unique_labels(best_results[0], best_results[1])]
+	confusion_matrix = sm.confusion_matrix(best_results[0], best_results[1])
+
+	model.load_state_dict(best_model_wts)
+
+	generate_visualizations(
+		t_accuracies,
+		t_losses,
+		v_accuracies,
+		v_losses,
+		confusion_matrix,
+		labels,
+		folder=dataset_folder_path
+		)
 
 	print('')
 	print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 	print('Best val Acc: {:4f}'.format(best_acc))
-
-	# load best model weights
-	model.load_state_dict(best_model_wts)
 
 	return model
 
@@ -252,8 +439,27 @@ Main function.
 
 def main():
 
-	model_ft = ResNet18(num_classes=num_classes)
-	model_ft = model_ft.to(device)
+	print('')
+
+	if args.network == 'ResNet18':
+
+		model_ft = ResNet18(num_classes=num_classes)
+		model_ft = model_ft.to(device)
+
+	elif args.network == 'ResNet34':
+
+		model_ft = ResNet34(num_classes=num_classes)
+		model_ft = model_ft.to(device)
+
+	elif args.network == 'ResNet50':
+
+		model_ft = ResNet50(num_classes=num_classes)
+		model_ft = model_ft.to(device)
+
+	elif args.network == 'VGG11':
+
+		model_ft = VGG('VGG11', 1, 7)
+		model_ft = model_ft.to(device)
 
 	criterion = nn.CrossEntropyLoss()
 
@@ -276,6 +482,9 @@ def main():
 		dec_lr_scheduler,
 		num_epochs=args.epochs
 		)
+
+	print('')
+
 
 '''
 

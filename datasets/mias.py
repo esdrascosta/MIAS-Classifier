@@ -18,6 +18,10 @@ from six.moves import urllib
 import numpy as np
 import torch.utils.data as data
 
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+
 '''
 
 Class grouping information about an instance of the MIAS dataset.
@@ -62,7 +66,7 @@ class MIAS(data.Dataset):
 
 			# Use full sized images and data augmentation.
 
-			p, s, l = self.__simple_data_augmentation__(p, l)
+			p, s, l = self.__simple_data_augmentation__(p, l, load)
 
 			self.patients = p
 			self.samples = s
@@ -72,8 +76,8 @@ class MIAS(data.Dataset):
 
 			# Use images containing the ROIs and data augmentation.
 
-			p, s, l = self.__simple_data_augmentation__(p, l)
-			p, s, l = self.__extend_data_augmentation__(p, l)
+			p, s, l = self.__simple_data_augmentation__(p, l, load)
+			p, s, l = self.__extend_data_augmentation__(p, l, load)
 
 			self.patients = p
 			self.samples = s
@@ -139,10 +143,20 @@ class MIAS(data.Dataset):
 
 			raise ValueError("Not a raw PGM file: '%s'" % filename)
 
+		'''
+		print('')
+		print(len(buffer))
+		print("{}.pgm".format(filename))
+		print('u1' if int(maxval) < 256 else byteorder+'u2')
+		print(int(width)*int(height))
+		print(len(header))
+		print('')
+		'''
+
 		return np.frombuffer(buffer,
 			dtype='u1' if int(maxval) < 256 else byteorder+'u2',
 			count=int(width)*int(height),
-			offset=len(header)
+			offset=15#len(header)
 			).reshape(( int(height), int(width) ))
 
 	'''
@@ -286,7 +300,7 @@ class MIAS(data.Dataset):
 
 	'''
 
-	def __simple_data_augmentation__(self, patients, labels_enumeration):
+	def __simple_data_augmentation__(self, patients, labels_enumeration, load):
 
 		p_index = 0
 		n_samples = []
@@ -313,6 +327,8 @@ class MIAS(data.Dataset):
 					img_path = os.path.join(folder_path_dataset, img_filename)
 
 					n_samples.append((img_path, abn_class_enumeration))
+
+			labels_enumeration['ANORM'] = 7
 
 			return patients, n_samples, labels_enumeration
 
@@ -391,6 +407,8 @@ class MIAS(data.Dataset):
 
 		json.dump((patients + n_patients), infos_file, indent=4)
 
+		labels_enumeration['ANORM'] = 7
+
 		return (patients + n_patients), n_samples, labels_enumeration
 
 	'''
@@ -399,7 +417,7 @@ class MIAS(data.Dataset):
 
 	'''
 
-	def __extend_data_augmentation__(self, patients, labels_enumeration):
+	def __extend_data_augmentation__(self, patients, labels_enumeration, load):
 
 		p_index = 0
 		n_samples = []
@@ -416,14 +434,46 @@ class MIAS(data.Dataset):
 			infos_file = open(infos_filepath, "r")
 			patients = json.load(infos_file)
 
+			if load == 2:
+				labels_enumeration = {'ANORM': 0, 'NORM': 1}
+			elif load == 5:
+				labels_enumeration = {'SPIC':0,'MISC':1,'CIRC':2,'ASYM':3,'ARCH':4,'CALC':5}
+			elif load == 6:
+				labels_enumeration = {'B': 0, 'M': 1}
+
 			for patient in patients:
 
 				abn_class = patient['abn_class']
-				abn_class_enumeration = labels_enumeration[abn_class]
+				abn_severity = patient['abn_severity']
 				img_filename = patient['img_filename']
 				img_path = os.path.join(folder_path_dataset, img_filename)
 
-				n_samples.append((img_path, abn_class_enumeration))
+				if load == 2:
+
+					if abn_class != 'NORM':
+
+						patient['abn_class'] = 'ANORM'
+						abn_class = 'ANORM'
+
+					abn_class_enumeration = labels_enumeration[abn_class]
+
+					n_samples.append((img_path, abn_class_enumeration))
+
+				elif load == 5:
+
+					if abn_class != 'NORM':
+
+						abn_class_enumeration = labels_enumeration[abn_class]
+
+						n_samples.append((img_path, abn_class_enumeration))
+
+				elif load == 6:
+
+					if abn_class != 'NORM' and abn_severity != None and len(abn_severity) > 0:
+
+						abn_class_enumeration = labels_enumeration[abn_severity]
+
+						n_samples.append((img_path, abn_class_enumeration))
 
 			return patients, n_samples, labels_enumeration
 
@@ -441,6 +491,7 @@ class MIAS(data.Dataset):
 
 				abn_class = patient[side]['abn_class']
 				abn_class_enum = labels_enumeration[abn_class]
+				abn_severity = patient[side]['abn_severity']
 
 				abn_has_coordinates = patient[side]['abn_has_coordinates']
 				abn_coordinates = patient[side]['abn_coordinates']
@@ -477,6 +528,7 @@ class MIAS(data.Dataset):
 						n_patients[p_index] = {}
 						n_patients[p_index]['img_filename'] = n_img_filename
 						n_patients[p_index]['abn_class'] = abn_class
+						n_patients[p_index]['abn_severity'] = abn_severity
 						n_samples.append((n_img_path, abn_class_enum))
 						p_index = p_index + 1
 
@@ -495,6 +547,7 @@ class MIAS(data.Dataset):
 					n_patients[p_index] = {}
 					n_patients[p_index]['img_filename'] = o_img_filename
 					n_patients[p_index]['abn_class'] = abn_class
+					n_patients[p_index]['abn_severity'] = abn_severity
 					n_samples.append((n_img_path, abn_class_enum))
 					p_index = p_index + 1
 
@@ -508,7 +561,7 @@ class MIAS(data.Dataset):
 
 	'''
 
-	def plot_class_distribution(self):
+	def plot_class_distribution(self, folder=None):
 
 		print('Plotting class distribution.')
 
@@ -527,7 +580,24 @@ class MIAS(data.Dataset):
 		plt.xticks(y_pos, x_labels)
 		plt.ylabel('Ocorrências')
 		plt.title('Distribuição do Banco por Classe')
-		plt.show()
+
+		if folder == None:
+
+			plt.show()
+
+		else:
+
+			plt.savefig(folder + '/class_distribution.png')
+
+	'''
+
+	Returns the classes name.
+
+	'''
+
+	def all_classes(self):
+
+		return list(self.labels_enumeration.keys())
 
 	'''
 
@@ -537,7 +607,8 @@ class MIAS(data.Dataset):
 
 	def num_classes(self):
 
-		return len(self.labels_enumeration)
+		#return len(self.labels_enumeration)
+		return len(set([x[1] for x in self.samples]))
 
 	'''
 
@@ -561,18 +632,17 @@ xxx
 
 if __name__ == "__main__":
 
-	# Hack to make matplotlib work on macOS under a virtual enviorment.
-
-	import matplotlib
-	matplotlib.use('TkAgg')
-	import matplotlib.pyplot as plt
-
 	# Initialize the dataset.
 	# If the data doesnt't exist, the class will download it.
 	# If augment is True and data aumentation wasn't performed yet, it will.
 
-	dataset = MIAS()
+	dataset = MIAS(load=1)
 
 	# Plot the samples distribution per class.
 
 	dataset.plot_class_distribution()
+
+	# ...
+
+	print('num classes: ' + str(dataset.num_classes()))
+	print('all classes: ' + str(dataset.all_classes()))
