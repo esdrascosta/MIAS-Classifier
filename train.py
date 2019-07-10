@@ -81,6 +81,15 @@ parser.add_argument(
     metavar='SS',
     help='reduce lr scheduler step size'
 )
+
+parser.add_argument(
+    '--dropout',
+    type=int,
+    default=0.5,
+    metavar='SS',
+    help='reduce lr scheduler step size'
+)
+
 args = parser.parse_args()
 
 """
@@ -230,6 +239,12 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     return model
 
 
+def print_number_parameters(model):
+    total_params = sum(p.numel()
+                       for p in model.parameters() if p.requires_grad)
+    print(f"Number of Trainables Params: {str(total_params)}")
+
+
 """
 Main Function 
 """
@@ -237,23 +252,23 @@ Main Function
 
 def get_model():
     if args.model == 'ResNet18':
-        return ResNet18()
+        return ResNet18(p_dropout=args.dropout)
     elif args.model == 'ResNet34':
-        return ResNet34()
+        return ResNet34(p_dropout=args.dropout)
     elif args.model == 'ResNet50':
-        return ResNet50()
+        return ResNet50(p_dropout=args.dropout)
     elif args.model == 'ResNet101':
-        return ResNet101()
+        return ResNet101(p_dropout=args.dropout)
     elif args.model == 'ResNet152':
-        return ResNet152()
+        return ResNet152(p_dropout=args.dropout)
     elif args.model == 'VGG11':
-        return VGG('VGG11')
+        return VGG('VGG11', p_dropout=args.dropout)
     elif args.model == 'VGG13':
-        return VGG('VGG13')
+        return VGG('VGG13', p_dropout=args.dropout)
     elif args.model == 'VGG16':
-        return VGG('VGG16')
+        return VGG('VGG16', p_dropout=args.dropout)
     elif args.model == 'VGG19':
-        return VGG('VGG19')
+        return VGG('VGG19', p_dropout=args.dropout)
     else:
         raise 'Model Not found'
 
@@ -261,6 +276,8 @@ def get_model():
 def main():
     model_ft = get_model()
     print(model_ft)
+    print_number_parameters(model_ft)
+
     model_ft = model_ft.to(device)
 
     criterion = nn.CrossEntropyLoss()

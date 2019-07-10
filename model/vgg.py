@@ -12,14 +12,16 @@ cfg = {
 
 class VGG(nn.Module):
 
-    def __init__(self, vgg_name, in_channels=1, out_channels=7):
+    def __init__(self, vgg_name, in_channels=1, out_channels=7, p_dropout=0.5):
         super(VGG, self).__init__()
         self.in_channels = in_channels
         self.features = self._make_layers(cfg[vgg_name])
         self.classifier = nn.Linear(512, out_channels)
+        self.dropout = nn.Dropout2d(p=p_dropout, inplace=True)
 
     def forward(self, x):
         out = self.features(x)
+        out = self.dropout(out)
         out = out.view(out.size(0), -1)
         out = self.classifier(out)
         return out
