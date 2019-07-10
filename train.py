@@ -73,6 +73,14 @@ parser.add_argument(
     metavar='MD',
     help='which model to use'
 )
+
+parser.add_argument(
+    '--scheduler-step',
+    type=int,
+    default=40,
+    metavar='SS',
+    help='reduce lr scheduler step size'
+)
 args = parser.parse_args()
 
 """
@@ -266,7 +274,7 @@ def main():
     # # Decay LR by a factor of 0.1 every 40 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(
         optimizer_ft,
-        step_size=40,
+        step_size=args.scheduler_step,
         gamma=0.1
     )
 
