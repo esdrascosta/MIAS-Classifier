@@ -84,7 +84,7 @@ parser.add_argument(
 
 parser.add_argument(
     '--dropout',
-    type=int,
+    type=float,
     default=0.5,
     metavar='SS',
     help='reduce lr scheduler step size'
