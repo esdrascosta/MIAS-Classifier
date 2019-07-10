@@ -260,7 +260,7 @@ class MIAS(data.Dataset):
         return file_names, labels
 
     def _check_processed_exists(self):
-        return os.path.exists(os.path.join(self.root, self.processed_folder, self.dataset_file))
+        return os.path.exists(os.path.join(self.root, self.raw_folder, 'all-mias'))
 
     def plot_distribution(self):
         from collections import Counter

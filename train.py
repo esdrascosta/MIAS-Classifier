@@ -93,7 +93,7 @@ Load the dataset.
 data_path = os.path.join(args.data_folder)
 mias_dataset = MIAS(
     data_path,
-    download=False,
+    download=True,
     transform=transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize((128, 128), interpolation=Image.LANCZOS),
