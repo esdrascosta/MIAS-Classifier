@@ -108,24 +108,24 @@ def ResNet18(num_classes=7, p_dropout=0.5):
 
 
 def ResNet34(num_classes=7, p_dropout=0.5):
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, p_dropout=p_dropout))
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, p_dropout=p_dropout)
 
 
-def ResNet50(num_classes = 7, p_dropout = 0.5):
-    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes = num_classes, p_dropout = p_dropout))
+def ResNet50(num_classes=7, p_dropout=0.5):
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, p_dropout=p_dropout)
 
 
 def ResNet101(num_classes=7, p_dropout=0.5):
-    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, p_dropout=p_dropout))
+    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, p_dropout=p_dropout)
 
 
 def ResNet152(num_classes=7, p_dropout=0.5):
-    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, p_dropout=p_dropout))
+    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, p_dropout=p_dropout)
 
 
 def test():
-    net=ResNet18(num_classes=7)
-    y=net(torch.randn(1, 1, 32, 32))
+    net = ResNet18(num_classes=7)
+    y = net(torch.randn(1, 1, 32, 32))
     print(net)
     print(y.size())
 
